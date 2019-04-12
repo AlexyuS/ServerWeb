@@ -51,8 +51,8 @@ public class ClientHandlingUtils {
 		}
 	}
 
-	public static boolean hasStringReturnType(List<Method> methodToCall) {
-		return methodToCall.get(0).getReturnType().getName().equals(String.class.getName());
+	public static boolean hasStringReturnType(Method methodToInvoke) {
+		return methodToInvoke.getReturnType().getName().equals(String.class.getName());
 	}
 
 	public static boolean isNullOrEmpty(String value) {

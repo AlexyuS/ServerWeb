@@ -6,12 +6,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.Socket;
-import java.util.Arrays;
-import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
-import com.app.controller.Controller;
+import com.app.classloader.EndpointsPoolService;
 import com.app.exception.client.ClientException;
 import com.app.exception.server.NotImplementedServerException;
 import com.app.exception.server.ServerException;
@@ -25,8 +23,7 @@ import com.app.utils.messages.ServerErrorMessages;
 
 public class ClientHandlingThread implements Runnable {
 	private final Socket socket;
-
-	Logger LOGGER = Logger.getLogger(ClientHandlingThread.class.getName());
+	private Logger log = Logger.getLogger(ClientHandlingThread.class.getName());
 
 	public ClientHandlingThread(Socket socket) {
 		this.socket = socket;
@@ -34,43 +31,30 @@ public class ClientHandlingThread implements Runnable {
 
 	@Override
 	public void run() {
-
+		log.info("Client has been connected");
 		try {
-			InputStreamReader rd = new InputStreamReader(socket.getInputStream());
-			BufferedReader reader = new BufferedReader(rd);
-			HeaderMessage stringList = new HeaderMessage();
-			String input;
-			do {
-				input = reader.readLine();
-				stringList.add(input);
-			} while (!ClientHandlingUtils.isNullOrEmpty(input));
+			HeaderMessage stringList = getHeaderFromMessage();
 
 			String endpoint = ClientHandlingUtils.determineEndpoint(stringList);
 
-			List<Method> methods = Arrays.asList(Controller.class.getMethods());
-			List<Method> methodsToCall = methods.stream()
-					.filter(e -> ClientHandlingUtils.endpointMatching(e.getName(), endpoint))
-					.collect(Collectors.toList());
+			Map<String, Method> endpoints = EndpointsPoolService.getInstance().getEndpoints();
 
-			if (methodsToCall.size() > 1) {
-				throw new NotImplementedServerException();
-
-			}
-			if (methodsToCall.size() == 0) {
+			Method methodToInvoke = endpoints.get(endpoint);
+			if(methodToInvoke==null) {
 				throw new NotImplementedServerException();
 			}
-
-			boolean isReturnTypeOfString = ClientHandlingUtils.hasStringReturnType(methodsToCall);
+			boolean isReturnTypeOfString = ClientHandlingUtils.hasStringReturnType(methodToInvoke);
 			if (!isReturnTypeOfString) {
 				throw new NotImplementedServerException();
 			}
 
-			String response = (String) methodsToCall.get(0).invoke(Controller.class.newInstance());
+			Object clazz = methodToInvoke.getDeclaringClass().newInstance();
+			String response = (String) methodToInvoke.invoke(clazz);
 
 			String body = ClientHandlingUtils.getBodyFromPath(response);
-			
-			sendResponse(socket, body, SuccessStatusCode.SUCCESS);
 
+			sendResponse(socket, body, SuccessStatusCode.SUCCESS);
+			
 		} catch (ServerException e) {
 			sendResponse(socket, "Server error:" + e.getMessage(), e.getError());
 		} catch (ClientException e) {
@@ -79,6 +63,18 @@ public class ClientHandlingThread implements Runnable {
 			sendResponse(socket, "Server error:" + ServerErrorMessages.E_500, ServerStatusCode.INTERNAL_ERROR);
 		}
 
+	}
+
+	private HeaderMessage getHeaderFromMessage() throws IOException {
+		InputStreamReader rd = new InputStreamReader(socket.getInputStream());
+		BufferedReader reader = new BufferedReader(rd);
+		HeaderMessage stringList = new HeaderMessage();
+		String input;
+		do {
+			input = reader.readLine();
+			stringList.add(input);
+		} while (!ClientHandlingUtils.isNullOrEmpty(input));
+		return stringList;
 	}
 
 	public void sendResponse(Socket socket, String body, StatusCode statusCode) {
@@ -97,7 +93,7 @@ public class ClientHandlingThread implements Runnable {
 		}
 
 	}
-	
+
 	public void closeSocket(Socket socket) {
 		try {
 			socket.close();

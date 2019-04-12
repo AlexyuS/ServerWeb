@@ -26,5 +26,10 @@
 			<artifactId>httpclient</artifactId>
 			<version>4.5.8</version>
 		</dependency>
+		<dependency>
+			<groupId>ServerApi</groupId>
+			<artifactId>ServerApi</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
 	</dependencies>
 </project>
